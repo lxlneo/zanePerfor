@@ -59,22 +59,8 @@ class DataTimedTaskService extends Service {
         if (!query) return;
         query = JSON.parse(query);
 
-        const item = {
-            app_id: query.appId,
-            create_time: new Date(query.time),
-            user_agent: query.user_agent,
-            ip: query.ip,
-            mark_page: this.app.randomString(),
-            mark_user: query.markUser,
-            mark_uv: query.markUv,
-            url: query.url,
-            pre_url: query.preUrl,
-            performance: query.performance,
-            error_list: query.errorList,
-            resource_list: query.resourceList,
-            screenwidth: query.screenwidth,
-            screenheight: query.screenheight,
-        };
+        const querytype = query.type || 1;
+        const item = await this.handleData(query);
 
         let system = {};
         // 做一次appId缓存
@@ -84,8 +70,9 @@ class DataTimedTaskService extends Service {
             system = await this.service.system.getSystemForAppId(item.app_id);
             this.cacheJson[item.app_id] = system;
         }
+        // 是否禁用上报
         if (system.is_use !== 0) return;
-        if (system.is_statisi_pages === 0) this.savePages(item, system.slow_page_time);
+        if (system.is_statisi_pages === 0 && querytype === 1) this.savePages(item, system.slow_page_time);
         if (system.is_statisi_resource === 0 || system.is_statisi_ajax === 0) this.forEachResources(item, system);
         if (system.is_statisi_error === 0) this.saveErrors(item);
         if (system.is_statisi_system === 0) this.saveEnvironment(item);
@@ -109,7 +96,7 @@ class DataTimedTaskService extends Service {
         try {
             if (!message.value) return;
             const json = {};
-            const query = JSON.parse(message.value);
+            const query = JSON.parse(message.value) || {};
             if (json.time) return;
             json.time = query.time;
 
@@ -123,22 +110,9 @@ class DataTimedTaskService extends Service {
 
     // 单个item储存数据
     async getWebItemDataForKafka(query) {
-        const item = {
-            app_id: query.appId,
-            create_time: new Date(query.time),
-            user_agent: query.user_agent,
-            ip: query.ip,
-            mark_page: this.app.randomString(),
-            mark_user: query.markUser,
-            mark_uv: query.markUv,
-            url: query.url,
-            pre_url: query.preUrl,
-            performance: query.performance,
-            error_list: query.errorList,
-            resource_list: query.resourceList,
-            screenwidth: query.screenwidth,
-            screenheight: query.screenheight,
-        };
+        const type = query.type || 1;
+        const item = await this.handleData(query);
+
         let system = {};
         // 做一次appId缓存
         if (this.cacheJson[item.app_id]) {
@@ -147,6 +121,7 @@ class DataTimedTaskService extends Service {
             system = await this.service.system.getSystemForAppId(item.app_id);
             this.cacheJson[item.app_id] = system;
         }
+        // 是否禁用上报
         if (system.is_use !== 0) return;
 
         // kafka 连接池限制
@@ -154,7 +129,7 @@ class DataTimedTaskService extends Service {
         if (this.kafkatotal && this.kafkalist.length >= this.kafkatotal) return;
         this.kafkalist.push(msgtab);
 
-        if (system.is_statisi_pages === 0) {
+        if (system.is_statisi_pages === 0 && type === 1) {
             this.savePages(item, system.slow_page_time, () => {
                 // 释放
                 const index = this.kafkalist.indexOf(msgtab);
@@ -228,13 +203,73 @@ class DataTimedTaskService extends Service {
                 system = await this.service.system.getSystemForAppId(item.app_id);
                 this.cacheJson[item.app_id] = system;
             }
+
+            // 是否禁用上报
             if (system.is_use !== 0) return;
-            if (system.is_statisi_pages === 0) this.savePages(item, system.slow_page_time);
+
+            const querytype = item.type || 1;
+            item = await this.handleData({
+                type: item.type,
+                appId: item.app_id,
+                time: item.create_time,
+                user_agent: item.user_agent,
+                ip: item.ip,
+                markPage: item.mark_page,
+                markUser: item.mark_user,
+                markUv: item.mark_uv,
+                url: item.url,
+                preUrl: item.pre_url,
+                performance: item.performance,
+                errorList: item.error_list,
+                resourceList: item.resource_list,
+                screenwidth: item.screenwidth,
+                screenheight: item.screenheight,
+                isFristIn: item.is_first_in,
+            });
+
+            if (system.is_statisi_pages === 0 && querytype === 1) this.savePages(item, system.slow_page_time);
             if (system.is_statisi_resource === 0 || system.is_statisi_ajax === 0) this.forEachResources(item, system);
             if (system.is_statisi_error === 0) this.saveErrors(item);
             if (system.is_statisi_system === 0) this.saveEnvironment(item);
             if (index === length && type) this.app.redis.set('web_task_begin_time', item.create_time);
         });
+    }
+
+    // 数据操作层
+    async handleData(query) {
+        const type = query.type || 1;
+
+        let item = {
+            app_id: query.appId,
+            create_time: new Date(query.time),
+            user_agent: query.user_agent,
+            ip: query.ip,
+            mark_page: query.markPage || this.app.randomString(),
+            mark_user: query.markUser,
+            mark_uv: query.markUv,
+            url: query.url,
+        };
+
+        if (type === 1) {
+            // 页面级性能
+            if (typeof query.isFristIn !== 'boolean') query.isFristIn = false;
+            item = Object.assign(item, {
+                is_first_in: query.isFristIn ? 2 : 1,
+                pre_url: query.preUrl,
+                performance: query.performance,
+                error_list: query.errorList,
+                resource_list: query.resourceList,
+                screenwidth: query.screenwidth,
+                screenheight: query.screenheight,
+            });
+        } else if (type === 2 || type === 3) {
+            // AJAX性能
+            item = Object.assign(item, {
+                error_list: query.errorList,
+                resource_list: query.resourceList,
+            });
+        }
+        return item;
     }
 
     // 储存网页性能数据
@@ -244,7 +279,7 @@ class DataTimedTaskService extends Service {
             const performance = item.performance;
             if (item.performance && item.performance.lodt > 0) {
                 const newurl = url.parse(item.url);
-                const newName = newurl.protocol + '//' + newurl.host + newurl.pathname;
+                const newName = `${newurl.protocol}//${newurl.host}${newurl.pathname}${newurl.hash ? newurl.hash : ''}`;
 
                 slowPageTime = slowPageTime * 1000;
                 const speedType = performance.lodt >= slowPageTime ? 2 : 1;
@@ -255,6 +290,7 @@ class DataTimedTaskService extends Service {
                 pages.full_url = item.url;
                 pages.pre_url = item.pre_url;
                 pages.speed_type = speedType;
+                pages.is_first_in = item.is_first_in;
                 pages.mark_page = item.mark_page;
                 pages.mark_user = item.mark_user;
                 pages.load_time = performance.lodt;

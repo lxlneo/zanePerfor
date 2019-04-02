@@ -15,19 +15,21 @@ class WebReportService extends Service {
 
         const report = ctx.model.Web.WebReport();
         report.app_id = query.appId;
+        report.is_first_in = query.isFristIn ? 2 : 1;
         report.create_time = query.time;
         report.user_agent = ctx.headers['user-agent'];
         report.ip = ip;
         report.mark_page = this.app.randomString();
         report.mark_user = query.markUser;
         report.mark_uv = query.markUv;
-        report.url = ctx.headers.referer;
+        report.url = query.url || ctx.headers.referer;
         report.pre_url = query.preUrl;
         report.performance = query.performance;
         report.error_list = query.errorList;
         report.resource_list = query.resourceList;
         report.screenwidth = query.screenwidth;
         report.screenheight = query.screenheight;
+        report.type = query.type || 1;
         report.save();
         return {};
     }
