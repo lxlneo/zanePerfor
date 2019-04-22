@@ -1,7 +1,7 @@
 'use strict';
 const parser = require('cron-parser');
 const Service = require('egg').Service;
-class WebReportService extends Service {
+class PvuvipTaskService extends Service {
 
     // 获得web端 pvuvip
     async getWebPvUvIpByDay() {
@@ -15,18 +15,9 @@ class WebReportService extends Service {
     }
     // 定时执行每分钟的数据
     async getWebPvUvIpByMinute() {
-        let between = 0;
-        if (this.app.config.report_data_type === 'redis') {
-            const interval = parser.parseExpression(this.app.config.redis_consumption.task_time);
-            between = Math.abs(new Date(interval.next().toString()).getTime() - new Date(interval.next().toString()).getTime());
-        } else if (this.app.config.report_data_type === 'mongodb') {
-            const interval = parser.parseExpression(this.app.config.report_task_time);
-            between = Math.abs(new Date(interval.next().toString()).getTime() - new Date(interval.next().toString()).getTime());
-        }
-
         const interval = parser.parseExpression(this.app.config.pvuvip_task_minute_time);
-        const endTime = new Date(interval.prev().toString()).getTime() - between;
-        const beginTime = new Date(interval.prev().toString()).getTime() - between;
+        const endTime = new Date(interval.prev().toString());
+        const beginTime = new Date(interval.prev().toString());
         const query = { create_time: { $gte: beginTime, $lt: endTime } };
 
         const datas = await this.ctx.model.System.distinct('app_id', { type: 'web' }).read('sp').exec();
@@ -46,28 +37,35 @@ class WebReportService extends Service {
     // 获得pvuvip数据
     async savePvUvIpData(appId, endTime, type, query) {
         try {
-            const pvpro = Promise.resolve(this.app.models.WebPages(appId).count(query).read('sp'));
-            const uvpro = Promise.resolve(this.app.models.WebEnvironment(appId).distinct('mark_uv', query).read('sp'));
-            const ippro = Promise.resolve(this.app.models.WebEnvironment(appId).distinct('ip', query).read('sp'));
+            const pvpro = Promise.resolve(this.ctx.service.web.pvuvip.pv(appId, query));
+            const uvpro = Promise.resolve(this.ctx.service.web.pvuvip.uv(appId, query));
+            const ippro = Promise.resolve(this.ctx.service.web.pvuvip.ip(appId, query));
+            const ajpro = Promise.resolve(this.ctx.service.web.pvuvip.ajax(appId, query));
+            const flpro = Promise.resolve(this.ctx.service.web.pvuvip.flow(appId, query));
+
             let data = [];
             if (type === 1) {
-                data = await Promise.all([ pvpro, uvpro, ippro ]);
+                data = await Promise.all([ pvpro, uvpro, ippro, ajpro, flpro ]);
             } else if (type === 2) {
-                const user = Promise.resolve(this.app.models.WebEnvironment(appId).distinct('mark_user', query).read('sp'));
-                const bounce = Promise.resolve(this.ctx.service.web.pvuvip.bounceRate(appId, query));
-                data = await Promise.all([ pvpro, uvpro, ippro, user, bounce ]);
+                const user = Promise.resolve(this.ctx.service.web.pvuvip.user(appId, query));
+                const bounce = Promise.resolve(this.ctx.service.web.pvuvip.bounce(appId, query));
+                data = await Promise.all([ pvpro, uvpro, ippro, ajpro, flpro, user, bounce ]);
             }
             const pv = data[0] || 0;
-            const uv = data[1].length || 0;
-            const ip = data[2].length || 0;
-            const user = type === 2 ? data[3].length : 0;
-            const bounce = type === 2 ? data[4] : 0;
+            const uv = data[1].length ? data[1][0].count : 0;
+            const ip = data[2].length ? data[2][0].count : 0;
+            const ajax = data[3] || 0;
+            const flow = data[4] || 0;
+            const user = type === 2 ? (data[5].length ? data[5][0].count : 0) : 0;
+            const bounce = type === 2 ? data[6] : 0;
 
             const pvuvip = this.ctx.model.Web.WebPvuvip();
             pvuvip.app_id = appId;
             pvuvip.pv = pv;
             pvuvip.uv = uv;
             pvuvip.ip = ip;
+            pvuvip.ajax = ajax;
+            pvuvip.flow = flow;
             if (type === 2) pvuvip.bounce = bounce ? (bounce / pv * 100).toFixed(2) + '%' : 0;
             if (type === 2) pvuvip.depth = pv && user ? parseInt(pv / user) : 0;
             pvuvip.create_time = endTime;
@@ -81,14 +79,19 @@ class WebReportService extends Service {
                     pv,
                     uv,
                     ip,
+                    ajax,
+                    flow,
                     bounce: bounce ? (bounce / pv * 100).toFixed(2) + '%' : 0,
                     depth: pv && user ? parseInt(pv / user) : 0,
                 }, 'pvuvip');
             }
-
+            // 流量峰值 超过历史top邮件触达
+            if (type === 1) {
+                this.ctx.service.emails.highestPvTipsEmail({ appId, pv, uv, ip, ajax, flow });
+            }
         } catch (err) { console.log(err); }
     }
 
 }
 
-module.exports = WebReportService;
+module.exports = PvuvipTaskService;

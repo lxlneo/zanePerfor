@@ -12,11 +12,11 @@ module.exports = app => {
         async task(ctx) {
             if (app.config.is_web_task_run || app.config.is_wx_task_run) {
                 // 保证集群servers task不冲突
-                const preminute = await app.redis.get('report_task_for_mongodb');
+                const preminute = await app.redis.get('report_task_for_mongodb') || '';
                 const value = app.config.cluster.listen.ip + ':' + app.config.cluster.listen.port;
                 if (preminute && preminute !== value) return;
                 if (!preminute) {
-                    await app.redis.set('report_task_for_mongodb', value, 'EX', 200);
+                    await app.redis.set('report_task_for_mongodb', value, 'EX', 20000);
                     const preminutetwo = await app.redis.get('report_task_for_mongodb');
                     if (preminutetwo !== value) return;
                 }

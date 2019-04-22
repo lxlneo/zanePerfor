@@ -83,9 +83,11 @@ class AnalysisService extends Service {
                 .exec()
         );
         const all = await Promise.all([ count, datas ]);
+        const [ totalNum, datalist ] = all;
+
         return {
-            datalist: all[1],
-            totalNum: all[0].length,
+            datalist,
+            totalNum: totalNum.length,
             pageNo,
         };
     }
@@ -95,7 +97,7 @@ class AnalysisService extends Service {
         return await this.app.models.WebEnvironment(appId)
             .find({ mark_user: markuser })
             .read('sp')
-            .sort({ cerate_time: 1 })
+            .sort({ create_time: 1 })
             .exec() || {};
     }
 
@@ -106,21 +108,24 @@ class AnalysisService extends Service {
         if (type === 1) {
             const pages = Promise.resolve(this.getRealTimeTopPages(appId, beginTime, endTime));
             const jump = Promise.resolve(this.getRealTimeTopJumpOut(appId, beginTime, endTime));
-            const all = await Promise.all([ pages, jump ]);
-            result = { top_pages: all[0], top_jump_out: all[1] };
+            const browser = Promise.resolve(this.getRealTimeTopBrowser(appId, beginTime, endTime));
+            const province = Promise.resolve(this.getRealTimeTopProvince(appId, beginTime, endTime));
+            const all = await Promise.all([ pages, jump, browser, province ]);
+            result = { top_pages: all[0], top_jump_out: all[1], top_browser: all[2], provinces: all[3] };
         } else if (type === 2) {
-            result = await this.getDbTopPages(appId, beginTime, endTime) || {};
+            result = await this.getDbTopAnalysis(appId, beginTime, endTime) || {};
         }
         return result;
     }
 
     // 历史 top
-    async getDbTopPages(appId, beginTime, endTime) {
+    async getDbTopAnalysis(appId, beginTime, endTime) {
         const data = await this.ctx.model.Web.WebStatis.findOne({ app_id: appId, create_time: { $gte: new Date(beginTime), $lte: new Date(endTime) } }).read('sp').exec();
         if (data) return data;
         // 不存在则储存
         return await this.saveRealTimeTopTask(appId, 2, beginTime, endTime);
     }
+
     // top 页面
     async getRealTimeTopPages(appId, beginTime, endTime) {
         let result = await this.app.redis.get(`${appId}_top_pages_realtime`);
@@ -148,6 +153,7 @@ class AnalysisService extends Service {
             return result;
         } catch (err) { console.log(err); }
     }
+
     // top跳出率
     async getRealTimeTopJumpOut(appId, beginTime, endTime) {
         let result = await this.app.redis.get(`${appId}_top_jump_out_realtime`);
@@ -183,6 +189,62 @@ class AnalysisService extends Service {
         } catch (err) { console.log(err); }
     }
 
+    // top浏览器排行
+    async getRealTimeTopBrowser(appId, beginTime, endTime) {
+        let result = await this.app.redis.get(`${appId}_top_browser_realtime`);
+        result = result ? JSON.parse(result) : await this.getRealTimeTopBrowserForDb(appId, beginTime, endTime);
+        return result;
+    }
+    async getRealTimeTopBrowserForDb(appId, beginTime, endTime, type) {
+        try {
+            const result = await this.app.models.WebEnvironment(appId).aggregate([
+                { $match: { create_time: { $gte: new Date(beginTime), $lte: new Date(endTime) } } },
+                {
+                    $group: {
+                        _id: { browser: '$browser' },
+                        count: { $sum: 1 },
+                    },
+                },
+                { $sort: { count: -1 } },
+                { $limit: this.app.config.top_alalysis_size.web || 10 },
+            ])
+                .read('sp')
+                .exec();
+
+            // 每分钟执行存储到redis
+            if (type === 1) this.app.redis.set(`${appId}_top_browser_realtime`, JSON.stringify(result));
+            return result;
+        } catch (err) { console.log(err); }
+    }
+
+    // top省市排行榜
+    async getRealTimeTopProvince(appId, beginTime, endTime, type = 1) {
+        let result = await this.app.redis.get(`${appId}_top_province_realtime`);
+        result = (result && type === 1) ? JSON.parse(result) : await this.getRealTimeTopProvinceForDb(appId, beginTime, endTime, type);
+        return result;
+    }
+    async getRealTimeTopProvinceForDb(appId, beginTime, endTime, type) {
+        try {
+            const result = await this.app.models.WebEnvironment(appId).aggregate([
+                { $match: { create_time: { $gte: new Date(beginTime), $lte: new Date(endTime) } } },
+                {
+                    $group: {
+                        _id: { province: '$province' },
+                        count: { $sum: 1 },
+                    },
+                },
+                { $sort: { count: -1 } },
+                { $limit: this.app.config.top_alalysis_size.web || 10 },
+            ])
+                .read('sp')
+                .exec();
+
+            // 每分钟执行存储到redis
+            if (type === 1) this.app.redis.set(`${appId}_top_province_realtime`, JSON.stringify(result));
+            return result;
+        } catch (err) { console.log(err); }
+    }
+
     // top排行榜 Task任务
     async saveRealTimeTopTask(appId, type, begin, end) {
         try {
@@ -194,26 +256,31 @@ class AnalysisService extends Service {
             }
             const pages = Promise.resolve(this.getRealTimeTopPagesForDb(appId, beginTime, endTime, type));
             const jump = Promise.resolve(this.getRealTimeTopJumpOutForDb(appId, beginTime, endTime, type));
+            const browser = Promise.resolve(this.getRealTimeTopBrowserForDb(appId, beginTime, endTime, type));
+            const province = Promise.resolve(this.getRealTimeTopProvinceForDb(appId, beginTime, endTime, type));
+            this.getRealTimeTopPvUvIpAjax(appId, beginTime, endTime);
 
             if (type === 2) {
                 // 每天数据存储到数据库
-                const provinces = Promise.resolve(this.getProvinceAvgCountForDb(appId, beginTime, endTime, type));
-                const all = await Promise.all([ pages, jump, provinces ]);
+                const all = await Promise.all([ pages, jump, browser, province ]);
+                const [ toppages, topjumpout, topbrowser, provinces ] = all;
 
                 const statis = this.ctx.model.Web.WebStatis();
                 statis.app_id = appId;
-                statis.top_pages = all[0];
-                statis.top_jump_out = all[1];
-                statis.provinces = all[2];
+                statis.top_pages = toppages;
+                statis.top_jump_out = topjumpout;
+                statis.top_browser = topbrowser;
+                statis.provinces = provinces;
                 statis.create_time = beginTime;
                 const result = await statis.save();
 
                 // 触发日报邮件
                 this.ctx.service.web.sendEmail.getDaliyDatas({
                     appId,
-                    toppages: all[0],
-                    topjumpout: all[1],
-                    provinces: all[2],
+                    toppages,
+                    topjumpout,
+                    topbrowser,
+                    provinces,
                 }, 'toplist');
 
                 return result;
@@ -221,40 +288,35 @@ class AnalysisService extends Service {
         } catch (err) { console.log(err); }
     }
 
+    // 定时获得实时流量统计
+    async getRealTimeTopPvUvIpAjax(appId, beginTime, endTime) {
+        const query = { create_time: { $gte: new Date(beginTime), $lt: new Date(endTime) } };
+        const pvpro = Promise.resolve(this.ctx.service.web.pvuvip.pv(appId, query));
+        const uvpro = Promise.resolve(this.ctx.service.web.pvuvip.uv(appId, query));
+        const ippro = Promise.resolve(this.ctx.service.web.pvuvip.ip(appId, query));
+        const ajpro = Promise.resolve(this.ctx.service.web.pvuvip.ajax(appId, query));
+        const flpro = Promise.resolve(this.ctx.service.web.pvuvip.flow(appId, query));
+        const data = await Promise.all([ pvpro, uvpro, ippro, ajpro, flpro ]);
+
+        const pv = data[0] || 0;
+        const uv = data[1].length ? data[1][0].count : 0;
+        const ip = data[2].length ? data[2][0].count : 0;
+        const ajax = data[3] || 0;
+        const flow = data[4] || 0;
+        this.app.redis.set(`${appId}_pv_uv_ip_realtime`, JSON.stringify({ pv, uv, ip, ajax, flow }));
+    }
+
     // 省份流量统计
     async getProvinceAvgCount(appId, beginTime, endTime, type) {
-        let result = null;
-        type = type * 1;
+        if (type) type = type * 1;
         if (type === 1) {
-            result = await this.getProvinceAvgCountForDb(appId, beginTime, endTime, type);
+            let res = await this.app.redis.get(`${appId}_top_province_realtime`);
+            res = res ? JSON.parse(res) : await this.getRealTimeTopProvinceForDb(appId, beginTime, endTime);
+            return { provinces: res };
         } else if (type === 2) {
-            // 先查询是否存在
-            const data = await this.ctx.model.Web.WebStatis.findOne({ app_id: appId, create_time: { $gte: new Date(beginTime), $lte: new Date(endTime) } }).read('sp').exec();
-            // 不存在则储存
-            result = data ? data : await this.saveRealTimeTopTask(appId, 2, beginTime, endTime);
+            return await this.getDbTopAnalysis(appId, beginTime, endTime);
         }
-        return result;
     }
-
-    async getProvinceAvgCountForDb(appId, beginTime, endTime, type) {
-        try {
-            const result = await this.app.models.WebEnvironment(appId).aggregate([
-                { $match: { create_time: { $gte: new Date(beginTime), $lte: new Date(endTime) } } },
-                {
-                    $group: {
-                        _id: { province: '$province' },
-                        count: { $sum: 1 },
-                    },
-                },
-                { $sort: { count: -1 } },
-            ])
-                .read('sp')
-                .exec();
-
-            return type === 1 ? { provinces: result } : result;
-        } catch (err) { console.log(err); }
-    }
-
 }
 
 module.exports = AnalysisService;
