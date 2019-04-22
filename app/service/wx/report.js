@@ -2,7 +2,7 @@
 
 const Service = require('egg').Service;
 
-class WxReportService extends Service {
+class ReportService extends Service {
 
     // 保存用户上报的数据
     async saveWxReportData(ctx) {
@@ -30,8 +30,9 @@ class WxReportService extends Service {
         report.userInfo = query.userInfo;
         report.pages = query.pages;
         report.ajaxs = query.ajaxs;
+        report.type = query.type || 1;
         report.save();
         return {};
     }
 }
-module.exports = WxReportService;
+module.exports = ReportService;

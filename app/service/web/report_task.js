@@ -6,7 +6,7 @@ const UAParser = require('ua-parser-js');
 const Service = require('egg').Service;
 const fs = require('fs');
 const path = require('path');
-class DataTimedTaskService extends Service {
+class ReportTaskService extends Service {
 
     constructor(params) {
         super(params);
@@ -41,20 +41,14 @@ class DataTimedTaskService extends Service {
     // 把redis消费数据经过加工之后同步到db3中 的定时任务（从redis中拉取数据）
     async saveWebReportDatasForRedis() {
         // 线程遍历
-        const totalcount = await this.app.redis.llen('web_repore_datas');
-        let onecount = this.app.config.redis_consumption.thread_web;
-        if (onecount > totalcount) onecount = totalcount;
+        const onecount = this.app.config.redis_consumption.thread_web;
         for (let i = 0; i < onecount; i++) {
-            if (i === onecount - 1) {
-                this.getWebItemDataForRedis(true);
-            } else {
-                this.getWebItemDataForRedis();
-            }
+            this.getWebItemDataForRedis();
         }
     }
 
     // 单个item储存数据
-    async getWebItemDataForRedis(type) {
+    async getWebItemDataForRedis() {
         let query = await this.app.redis.rpop('web_repore_datas');
         if (!query) return;
         query = JSON.parse(query);
@@ -76,7 +70,6 @@ class DataTimedTaskService extends Service {
         if (system.is_statisi_resource === 0 || system.is_statisi_ajax === 0) this.forEachResources(item, system);
         if (system.is_statisi_error === 0) this.saveErrors(item);
         if (system.is_statisi_system === 0) this.saveEnvironment(item);
-        if (type) this.app.redis.set('web_task_begin_time', item.create_time);
     }
 
     // kafka 消费信息
@@ -135,6 +128,10 @@ class DataTimedTaskService extends Service {
                 const index = this.kafkalist.indexOf(msgtab);
                 if (index > -1) this.kafkalist.splice(index, 1);
             });
+        } else {
+            // 释放
+            const index = this.kafkalist.indexOf(msgtab);
+            if (index > -1) this.kafkalist.splice(index, 1);
         }
         if (system.is_statisi_resource === 0 || system.is_statisi_ajax === 0) this.forEachResources(item, system);
         if (system.is_statisi_error === 0) this.saveErrors(item);
@@ -214,8 +211,8 @@ class DataTimedTaskService extends Service {
                 time: item.create_time,
                 user_agent: item.user_agent,
                 ip: item.ip,
-                markPage: item.mark_page,
-                markUser: item.mark_user,
+                markPage: item.mark_page || '',
+                markUser: item.mark_user || '',
                 markUv: item.mark_uv,
                 url: item.url,
                 preUrl: item.pre_url,
@@ -245,8 +242,8 @@ class DataTimedTaskService extends Service {
             user_agent: query.user_agent,
             ip: query.ip,
             mark_page: query.markPage || this.app.randomString(),
-            mark_user: query.markUser,
-            mark_uv: query.markUv,
+            mark_user: query.markUser || '',
+            mark_uv: query.markUv || '',
             url: query.url,
         };
 
@@ -284,6 +281,19 @@ class DataTimedTaskService extends Service {
                 slowPageTime = slowPageTime * 1000;
                 const speedType = performance.lodt >= slowPageTime ? 2 : 1;
 
+                // 算出页面资源大小
+                let totalSize = 0;
+                const sourslist = item.resource_list || [];
+                for (let i = 0; i < sourslist.length; i++) {
+                    if (
+                        sourslist[i].decodedBodySize &&
+                        sourslist[i].type !== 'fetchrequest' &&
+                        sourslist[i].type !== 'xmlhttprequest'
+                    ) {
+                        totalSize += sourslist[i].decodedBodySize;
+                    }
+                }
+
                 pages.app_id = item.app_id;
                 pages.create_time = item.create_time;
                 pages.url = newName;
@@ -297,7 +307,8 @@ class DataTimedTaskService extends Service {
                 pages.dns_time = performance.dnst;
                 pages.tcp_time = performance.tcpt;
                 pages.dom_time = performance.domt;
-                pages.resource_list = item.resource_list;
+                pages.resource_list = sourslist;
+                pages.total_res_size = totalSize;
                 pages.white_time = performance.wit;
                 pages.redirect_time = performance.rdit;
                 pages.unload_time = performance.uodt;
@@ -323,7 +334,7 @@ class DataTimedTaskService extends Service {
 
         // 遍历所有资源进行存储
         data.resource_list.forEach(item => {
-            if (item.type === 'xmlhttprequest') {
+            if (item.type === 'xmlhttprequest' || item.type === 'fetchrequest') {
                 if (system.is_statisi_ajax === 0) this.saveAjaxs(data, item, system.slow_ajax_time);
             } else {
                 if (system.is_statisi_resource === 0) this.saveResours(data, item, system);
@@ -336,7 +347,8 @@ class DataTimedTaskService extends Service {
         const newurl = url.parse(item.name);
         const newName = newurl.protocol + '//' + newurl.host + newurl.pathname;
         const querydata = newurl.query ? JSON.stringify(querystring.parse(newurl.query)) : '{}';
-        const duration = parseInt(item.duration || 0);
+        let duration = Math.abs(item.duration || 0);
+        if (duration > 60000) duration = 60000;
         slowAjaxTime = slowAjaxTime * 1000;
         const speedType = duration >= slowAjaxTime ? 2 : 1;
 
@@ -347,7 +359,7 @@ class DataTimedTaskService extends Service {
         ajaxs.url = newName;
         ajaxs.full_url = item.name;
         ajaxs.method = item.method;
-        ajaxs.duration = item.duration;
+        ajaxs.duration = duration;
         ajaxs.decoded_body_size = item.decodedBodySize;
         ajaxs.call_url = data.url;
         ajaxs.options = item.options || querydata;
@@ -361,7 +373,8 @@ class DataTimedTaskService extends Service {
     saveResours(data, item, system) {
         let slowTime = 2;
         let speedType = 1;
-        const duration = parseInt(item.duration || 0);
+        let duration = Math.abs(item.duration || 0);
+        if (duration > 60000) duration = 60000;
 
         if (item.type === 'link' || item.type === 'css') {
             slowTime = (system.slow_css_time || 2) * 1000;
@@ -389,7 +402,7 @@ class DataTimedTaskService extends Service {
         resours.name = newName;
         resours.method = item.method;
         resours.type = item.type;
-        resours.duration = item.duration;
+        resours.duration = duration;
         resours.decoded_body_size = item.decodedBodySize;
         resours.next_hop_protocol = item.nextHopProtocol;
         resours.mark_page = data.mark_page;
@@ -492,4 +505,4 @@ class DataTimedTaskService extends Service {
     }
 }
 
-module.exports = DataTimedTaskService;
+module.exports = ReportTaskService;

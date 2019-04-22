@@ -29,14 +29,18 @@
 >  * 项目性能优化（优化中）
 >  * 邮件触发服务开发（已完成)
 >  * 每日日报邮件发送（已完成）
->  * 页面后续操作过程中出现的Error错误、Ajax性能、资源加载的上报（完成）
+>  * 页面后续操作过程中出现的Error错误、Ajax性能、资源加载的上报（已完成）
 >  * 所有预警相关业务开发（开发中）
 >  * Kafka消息队列的引入和使用 （已完成）
+>  * 应用突破历史流量峰值时触发邮件通知、开发流量预警功能（已完成）
+>  * 用户访问实时消费流量统计功能(ajax，页面，资源)（已完成)
 
 ## 技术选型说明
 * egg.js, ejs, mongodb, redis, vue2, kafka
 
 ## 项目开发文档
+* [zanePerfor在高流量高并发项目下的架构配置建议实践说明](https://blog.seosiwei.com/detail/53)
+* [zanePerfor是什么?](https://blog.seosiwei.com/performance/index.html)
 * [系统高可用之Mongodb集群分片架构](https://blog.seosiwei.com/performance/colony.html)
 * [系统高可用之Mongodb副本集读写分离架构](https://blog.seosiwei.com/performance/replica_set.html)
 * [Servers集群模式下避免定时任务的多次执行](https://blog.seosiwei.com/performance/repeart_task.html)
@@ -138,4 +142,13 @@ npm run dev
 ```sh
 npm start 
 ```
+
+### 交流和建议群
+* 自发布以来有感兴趣的童鞋遇到了各种问题，大部分情况下是通过邮件进行沟通，为了方便解决大家部署中遇到的各种问题，下面贴出一个QQ交流群，有问题或者建议可直接@我。
+![](https://github.com/wangweianger/zanePerfor/blob/master/demo/ewm.jpg "")
+
+
+
+
+
 

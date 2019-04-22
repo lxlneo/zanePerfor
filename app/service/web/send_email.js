@@ -60,10 +60,16 @@ class SendEmailService extends Service {
         let provincehtml = '';
         let toppageshtml = '';
         let topjumpout = '';
+        let topbrowser = '';
 
         if (toplist.provinces && toplist.provinces.length) {
             for (let i = 0, len = toplist.provinces.length; i < len; i++) {
                 provincehtml += `<div style="display:inline-block;margin-right:20px;margin-bottom:20px;">${toplist.provinces[i]._id.province}：<span style="color:#8776f7;">${toplist.provinces[i].count}</span></div>`;
+            }
+        }
+        if (toplist.topbrowser && toplist.topbrowser.length) {
+            for (let i = 0, len = toplist.topbrowser.length; i < len; i++) {
+                topbrowser += `<div style="display:inline-block;margin-right:20px;margin-bottom:20px;">${toplist.topbrowser[i]._id.browser}：<span style="color:#8776f7;">${toplist.topbrowser[i].count}</span></div>`;
             }
         }
         if (toplist.toppages && toplist.toppages.length) {
@@ -91,19 +97,27 @@ class SendEmailService extends Service {
                 <div>
                     <h1 style="font-size:20px;text-align:center;line-height:60px;">${systemMsg.system_name}应用${datas.day}详情</h1>
                     <div style="width:90%;margin:0 auto;background:#fff;border-radius:6px;padding:20px;overflow:hidden;">
-                        <h2 style="font-size:18px;line-height:50px;">PV/UV/IP统计</h2>
+                        <h2 style="font-size:18px;line-height:50px;">PV/UV/IP/AJAX统计</h2>
                         <div>
                             <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">PV：<span style="color:#8776f7;">${pvuvip.pv || 0}</span></div>
                             <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">UV：<span style="color:#8776f7;">${pvuvip.uv || 0}</span></div>
                             <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">IP：<span style="color:#8776f7;">${pvuvip.ip || 0}</span></div>
+                            <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">AJAX：<span style="color:#8776f7;">${pvuvip.ajax || 0}</span></div>
                             <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">跳出率：<span style="color:#8776f7;">${pvuvip.bounce || 0}</span></div>
                             <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">访问深度：<span style="color:#8776f7;">${pvuvip.depth || 0}</span></div>
+                            <div style="display: inline-block;margin-right:20px;font-size:18px;padding:0 20px;">流量：<span style="color:#8776f7;">${this.app.flow(pvuvip.flow)}</span></div>
                         </div>
                     </div>
                     <div style="width:90%;margin:0 auto;margin-top:20px;background:#fff;border-radius:6px;padding:20px;overflow:hidden;">
                         <h2 style="font-size:18px;line-height:50px;">省市流量排行</h2>
                         <div>
                             ` + provincehtml + `
+                        </div>
+                    </div>
+                    <div style="width:90%;margin:0 auto;margin-top:20px;background:#fff;border-radius:6px;padding:20px;overflow:hidden;">
+                        <h2 style="font-size:18px;line-height:50px;">省市流量排行</h2>
+                        <div>
+                            ` + topbrowser + `
                         </div>
                     </div>
                     <div style="width:90%;margin:0 auto;margin-top:20px;background:#fff;border-radius:6px;padding:20px;overflow:hidden;">
