@@ -40,6 +40,7 @@ class AnalysisService extends Service {
                                     markuser: '$mark_user',
                                     browser: '$browser',
                                     system: '$system',
+                                    createTime:'$create_time'
                                 },
                             },
                         },
@@ -73,6 +74,7 @@ class AnalysisService extends Service {
                             markuser: '$mark_user',
                             browser: '$browser',
                             system: '$system',
+                            createTime:'$create_time'
                         },
                     },
                 },
