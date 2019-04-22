@@ -37,7 +37,7 @@ exports.kafka = {
 };
 
 exports.alinode = {
-    enable: false,
+    enable: true,
     package: 'egg-alinode',
 };
 
