@@ -59,7 +59,7 @@
 					<td><a href="javascript:" @click="goToList(item)">{{item._id.ip}}</a></td>
 					<td class="tc">{{item._id.browser}}</td>
 					<td class="tc">{{item._id.system}}</td>
-					<td class="tc">{{item._id.createTime | date}}</td>
+					<td class="tc">{{item._id.createTime|date('-',true)}}</td>
 					<td class="tc"><a href="javascript:" @click="goToList(item)">详情</a></td>
 				</tr>
 			</table>
