@@ -168,11 +168,12 @@
 			},
 			selectSystem(type,item){
 				if(type===1){
-					location.href = '/web/setting';	
+					location.href = '/web/setting';
 				}else if(type === 2){
-					location.href = '/web/home';	
+					location.href = '/web/home';
 				}
 				util.setStorage('local','appId',item.app_id)
+				util.setStorage('local','appInfo',JSON.stringify(item))
 			},
 			getUserList(){
 				this.isUserLoadend = false;
@@ -188,7 +189,7 @@
 						if (!data.data.datalist && !data.data.datalist.length){
 							this.userlist =[];
 							return;
-						} 
+						}
 						this.userlist = data.data.datalist
 						new Page({
 							parent: $('#copot-page'),

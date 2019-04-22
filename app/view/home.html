@@ -125,15 +125,16 @@
 			},
 			selectSystem(type,item){
 				if(type===1 && item.type==='web'){
-					location.href = '/web/setting';	
+					location.href = '/web/setting';
 				}else if(type === 2 && item.type === 'web'){
-					location.href = '/web/home';	
+					location.href = '/web/home';
 				}else if(type === 1 && item.type === 'wx'){
-					location.href = '/wx/setting';	
+					location.href = '/wx/setting';
 				}else if (type === 2 && item.type === 'wx') {
-					location.href = '/wx/home';	
-				}	
+					location.href = '/wx/home';
+				}
 				util.setStorage('local','appId',item.app_id)
+				util.setStorage('local','appInfo',JSON.stringify(item))
 			}
 		},
 	})
